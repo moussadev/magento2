@@ -47,17 +47,31 @@ class Queue extends \Magento\Framework\Model\ResourceModel\Db\AbstractDb
      */
     public function saveMessages($messageTopic, array $messages)
     {
-        $data = [];
-        foreach ($messages as $message) {
-            $data[] = ['topic_name' => $messageTopic, 'body' => $message];
+        $ids = [];
+        $this->getConnection()->beginTransaction();
+        try {
+            $data = [];
+            foreach ($messages as $message) {
+                $data[] = ['topic_name' => $messageTopic, 'body' => $message];
+            }
+            $rowCount = $this->getConnection()->insertMultiple($this->getMessageTable(), $data);
+            $firstId = $this->getConnection()->lastInsertId($this->getMessageTable());
+            $select = $this->getConnection()->select()
+                ->from(['qm' => $this->getMessageTable()], ['id'])
+                ->where('qm.id >= ?', $firstId)
+                ->limit($rowCount);
+
+            $ids = $this->getConnection()->fetchCol($select);
+            $this->getConnection()->commit();
+        } catch (\Exception $e) {
+            $this->getConnection()->rollBack();
+            throw new \Magento\Framework\Exception\CouldNotSaveException(
+                __('Could not save Messages'),
+                $e
+            );
         }
-        $rowCount = $this->getConnection()->insertMultiple($this->getMessageTable(), $data);
-        $firstId = $this->getConnection()->lastInsertId($this->getMessageTable());
-        $select = $this->getConnection()->select()
-            ->from(['qm' => $this->getMessageTable()], ['id'])
-            ->where('qm.id >= ?', $firstId)
-            ->limit($rowCount);
-        return $this->getConnection()->fetchCol($select);
+
+        return $ids;
     }
 
     /**
